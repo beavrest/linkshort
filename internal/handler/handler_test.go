@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/beavrest/linkshort/internal/storage"
+	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -59,7 +60,7 @@ func TestHandle_PostShorten(t *testing.T) {
 			req.Header.Set("Content-Type", "text/plain")
 			rec := httptest.NewRecorder()
 
-			h.Handle(rec, req)
+			h.Shorten(rec, req)
 
 			assert.Equal(t, tt.wantStatus, rec.Code, "status code")
 			if tt.wantStatus == http.StatusCreated {
@@ -96,19 +97,22 @@ func TestHandle_GetExpand(t *testing.T) {
 			wantLoc:    "",
 		},
 		{
-			name:       "GET / returns 405",
+			name:       "GET / (empty id) returns 404",
 			path:       "/",
-			wantStatus: http.StatusMethodNotAllowed,
+			wantStatus: http.StatusNotFound,
 			wantLoc:    "",
 		},
 	}
+
+	r := chi.NewRouter()
+	r.Get("/{id}", h.Expand)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
 			rec := httptest.NewRecorder()
 
-			h.Handle(rec, req)
+			r.ServeHTTP(rec, req)
 
 			assert.Equal(t, tt.wantStatus, rec.Code, "status code")
 			if tt.wantLoc != "" {
@@ -132,12 +136,16 @@ func TestHandle_MethodNotAllowed(t *testing.T) {
 		{"POST", "/abc123"},
 	}
 
+	r := chi.NewRouter()
+	r.Post("/", h.Shorten)
+	r.Get("/{id}", h.Expand)
+
 	for _, tt := range tests {
 		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
 			req := httptest.NewRequest(tt.method, tt.path, nil)
 			rec := httptest.NewRecorder()
 
-			h.Handle(rec, req)
+			r.ServeHTTP(rec, req)
 
 			assert.Equal(t, http.StatusMethodNotAllowed, rec.Code, "status code")
 		})
@@ -153,7 +161,7 @@ func TestHandle_ShortenUsesBaseURLWhenEmpty(t *testing.T) {
 	req.Header.Set("Content-Type", "text/plain")
 	rec := httptest.NewRecorder()
 
-	h.Handle(rec, req)
+	h.Shorten(rec, req)
 
 	require.Equal(t, http.StatusCreated, rec.Code, "status")
 	body := strings.TrimSpace(rec.Body.String())

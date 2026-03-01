@@ -8,6 +8,7 @@ import (
 
 	"github.com/beavrest/linkshort/internal/repository"
 	"github.com/beavrest/linkshort/internal/shortener"
+	"github.com/go-chi/chi/v5"
 )
 
 type Handler struct {
@@ -19,19 +20,7 @@ func New(store repository.Storer, baseURL string) *Handler {
 	return &Handler{store: store, baseURL: baseURL}
 }
 
-// Handle маршрутизирует запросы: POST / - сокращение, GET /{id} — редирект
-func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
-	switch {
-	case r.Method == http.MethodPost && r.URL.Path == "/":
-		h.shorten(w, r)
-	case r.Method == http.MethodGet && r.URL.Path != "/":
-		h.expand(w, r)
-	default:
-		http.Error(w, "", http.StatusMethodNotAllowed)
-	}
-}
-
-func (h *Handler) shorten(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil || len(body) == 0 {
 		http.Error(w, "", http.StatusBadRequest)
@@ -56,8 +45,8 @@ func (h *Handler) shorten(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "%s/%s", base, shortID)
 }
 
-func (h *Handler) expand(w http.ResponseWriter, r *http.Request) {
-	id := strings.TrimPrefix(r.URL.Path, "/")
+func (h *Handler) Expand(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
 	originalURL, ok := h.store.Get(id)
 	if !ok {
 		http.Error(w, "", http.StatusNotFound)
