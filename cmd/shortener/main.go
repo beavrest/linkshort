@@ -4,13 +4,13 @@ import (
 	"log"
 	"net/http"
 
-	handlers "github.com/beavrest/linkshort/internal/handler"
+	"github.com/beavrest/linkshort/internal/handler"
 	"github.com/beavrest/linkshort/internal/storage"
 )
 
 func main() {
 	store := storage.NewMemory()
-	h := handlers.New(store, "")
+	h := handler.New(store, "")
 
 	http.HandleFunc("/", h.Handle)
 

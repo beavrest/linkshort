@@ -1,4 +1,4 @@
-package handlers
+package handler
 
 import (
 	"fmt"
@@ -19,7 +19,7 @@ func New(store *storage.Memory, baseURL string) *Handler {
 	return &Handler{store: store, baseURL: baseURL}
 }
 
-// Handle маршрутизирует запросы: POST / — сокращение, GET /{id} — редирект
+// Handle маршрутизирует запросы: POST / - сокращение, GET /{id} — редирект
 func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == http.MethodPost && r.URL.Path == "/":
