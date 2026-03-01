@@ -6,16 +6,16 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/beavrest/linkshort/internal/repository"
 	"github.com/beavrest/linkshort/internal/shortener"
-	"github.com/beavrest/linkshort/internal/storage"
 )
 
 type Handler struct {
-	store   *storage.Memory
+	store   repository.Storer
 	baseURL string
 }
 
-func New(store *storage.Memory, baseURL string) *Handler {
+func New(store repository.Storer, baseURL string) *Handler {
 	return &Handler{store: store, baseURL: baseURL}
 }
 
