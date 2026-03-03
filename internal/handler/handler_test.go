@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/beavrest/linkshort/internal/service"
 	"github.com/beavrest/linkshort/internal/storage"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
@@ -14,7 +15,8 @@ import (
 
 func TestHandle_PostShorten(t *testing.T) {
 	store := storage.NewMemory()
-	h := New(store, "http://localhost:8080")
+	serviceShortener := service.NewShortenerService(store)
+	h := New(serviceShortener, "http://localhost:8080")
 
 	tests := []struct {
 		name       string
@@ -76,7 +78,8 @@ func TestHandle_PostShorten(t *testing.T) {
 func TestHandle_GetExpand(t *testing.T) {
 	store := storage.NewMemory()
 	store.Save("abc123", "https://practicum.yandex.ru/")
-	h := New(store, "http://localhost:8080")
+	serviceShortener := service.NewShortenerService(store)
+	h := New(serviceShortener, "http://localhost:8080")
 
 	tests := []struct {
 		name       string
@@ -124,7 +127,8 @@ func TestHandle_GetExpand(t *testing.T) {
 
 func TestHandle_MethodNotAllowed(t *testing.T) {
 	store := storage.NewMemory()
-	h := New(store, "")
+	serviceShortener := service.NewShortenerService(store)
+	h := New(serviceShortener, "")
 
 	tests := []struct {
 		method string
@@ -154,7 +158,8 @@ func TestHandle_MethodNotAllowed(t *testing.T) {
 
 func TestHandle_ShortenUsesBaseURLWhenEmpty(t *testing.T) {
 	store := storage.NewMemory()
-	h := New(store, "")
+	serviceShortener := service.NewShortenerService(store)
+	h := New(serviceShortener, "")
 
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("https://ya.ru"))
 	req.Host = "localhost:8080"

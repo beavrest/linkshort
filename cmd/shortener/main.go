@@ -6,16 +6,18 @@ import (
 	"github.com/beavrest/linkshort/internal/config"
 	"github.com/beavrest/linkshort/internal/handler"
 	"github.com/beavrest/linkshort/internal/server"
+	"github.com/beavrest/linkshort/internal/service"
 	"github.com/beavrest/linkshort/internal/storage"
 
 	"github.com/go-chi/chi/v5"
 )
 
 func main() {
-	cfg := config.MustLoad()
+	cfg := config.GetConfig()
 
 	store := storage.NewMemory()
-	h := handler.New(store, cfg.BaseURL)
+	serviceShortener := service.NewShortenerService(store)
+	h := handler.New(serviceShortener, cfg.BaseURL)
 
 	r := chi.NewRouter()
 	r.Post("/", h.Shorten)

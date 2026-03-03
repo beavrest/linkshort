@@ -2,6 +2,7 @@ package config
 
 import (
 	"flag"
+	"os"
 )
 
 type Config struct {
@@ -9,14 +10,21 @@ type Config struct {
 	BaseURL string
 }
 
-func MustLoad() Config {
+func GetConfig() *Config {
 	addr := flag.String("a", "localhost:8080", "HTTP server address")
 	baseURL := flag.String("b", "http://localhost:8080", "base URL for short links")
 
 	flag.Parse()
 
-	return Config{
+	return &Config{
 		Addr:    *addr,
 		BaseURL: *baseURL,
 	}
+}
+
+func GetEnv(key string, defaultVal string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return defaultVal
 }

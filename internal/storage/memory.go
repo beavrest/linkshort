@@ -11,10 +11,11 @@ func NewMemory() *Memory {
 	return &Memory{data: make(map[string]string)}
 }
 
-func (m *Memory) Save(shortID, originalURL string) {
+func (m *Memory) Save(shortID, originalURL string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.data[shortID] = originalURL
+	return nil
 }
 
 func (m *Memory) Get(shortID string) (string, bool) {

@@ -6,18 +6,21 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/beavrest/linkshort/internal/repository"
-	"github.com/beavrest/linkshort/internal/shortener"
 	"github.com/go-chi/chi/v5"
 )
 
+type Shortener interface {
+	Shorten(originalURL string) (string, error)
+	Expand(id string) (string, bool)
+}
+
 type Handler struct {
-	store   repository.Storer
+	service Shortener
 	baseURL string
 }
 
-func New(store repository.Storer, baseURL string) *Handler {
-	return &Handler{store: store, baseURL: baseURL}
+func New(service Shortener, baseURL string) *Handler {
+	return &Handler{service: service, baseURL: baseURL}
 }
 
 func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
@@ -32,8 +35,11 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	shortID := shortener.GenerateID()
-	h.store.Save(shortID, originalURL)
+	shortID, err := h.service.Shorten(originalURL)
+	if err != nil {
+		http.Error(w, "", http.StatusInternalServerError)
+		return
+	}
 
 	base := h.baseURL
 	if base == "" {
@@ -47,7 +53,7 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) Expand(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	originalURL, ok := h.store.Get(id)
+	originalURL, ok := h.service.Expand(id)
 	if !ok {
 		http.Error(w, "", http.StatusNotFound)
 		return
