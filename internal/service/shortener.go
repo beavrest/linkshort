@@ -16,7 +16,7 @@ func NewShortenerService(store Store) *ShortenerService {
 }
 
 func (s *ShortenerService) Shorten(originalURL string) (string, error) {
-	id := GenerateID()
+	id := Generate()
 	if err := s.store.Save(id, originalURL); err != nil {
 		return "", err
 	}
@@ -29,7 +29,7 @@ func (s *ShortenerService) Expand(id string) (string, bool) {
 
 const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 
-func GenerateID() string {
+func Generate() string {
 	id := make([]byte, 6)
 	for i := range id {
 		id[i] = chars[rand.IntN(len(chars))]

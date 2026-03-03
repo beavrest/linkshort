@@ -10,7 +10,7 @@ type Config struct {
 	BaseURL string
 }
 
-func GetConfig() *Config {
+func Load() *Config {
 	addr := flag.String("a", "localhost:8080", "HTTP server address")
 	baseURL := flag.String("b", "http://localhost:8080", "base URL for short links")
 

@@ -13,7 +13,7 @@ import (
 )
 
 func main() {
-	cfg := config.GetConfig()
+	cfg := config.Load()
 
 	store := storage.NewMemory()
 	serviceShortener := service.NewShortenerService(store)
