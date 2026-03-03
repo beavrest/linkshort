@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 
+	"github.com/beavrest/linkshort/internal/config"
 	"github.com/beavrest/linkshort/internal/handler"
 	"github.com/beavrest/linkshort/internal/server"
 	"github.com/beavrest/linkshort/internal/storage"
@@ -11,14 +12,16 @@ import (
 )
 
 func main() {
+	cfg := config.MustLoad()
+
 	store := storage.NewMemory()
-	h := handler.New(store, "")
+	h := handler.New(store, cfg.BaseURL)
 
 	r := chi.NewRouter()
 	r.Post("/", h.Shorten)
 	r.Get("/{id}", h.Expand)
 
-	if err := server.Run("localhost:8080", r); err != nil {
+	if err := server.Run(cfg.Addr, r); err != nil {
 		log.Fatal(err)
 	}
 }
