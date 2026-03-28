@@ -31,6 +31,7 @@ func main() {
 	r.Use(logger.WithLogging(zapLog))
 	r.Post("/", h.Shorten)
 	r.Get("/{id}", h.Expand)
+	r.Post("/api/shorten", h.ShortenJSON)
 
 	if err := server.Run(cfg.Addr, r); err != nil {
 		log.Fatal(err)
