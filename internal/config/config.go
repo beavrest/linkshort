@@ -17,8 +17,8 @@ func Load() *Config {
 	flag.Parse()
 
 	return &Config{
-		Addr:    *addr,
-		BaseURL: *baseURL,
+		Addr:    GetEnv("SERVER_ADDRESS", *addr),
+		BaseURL: GetEnv("BASE_URL", *baseURL),
 	}
 }
 
