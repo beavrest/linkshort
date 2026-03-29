@@ -6,6 +6,7 @@ import (
 	"github.com/beavrest/linkshort/internal/config"
 	"github.com/beavrest/linkshort/internal/handler"
 	"github.com/beavrest/linkshort/internal/logger"
+	"github.com/beavrest/linkshort/internal/middleware"
 	"github.com/beavrest/linkshort/internal/server"
 	"github.com/beavrest/linkshort/internal/service"
 	"github.com/beavrest/linkshort/internal/storage"
@@ -29,6 +30,8 @@ func main() {
 
 	r := chi.NewRouter()
 	r.Use(logger.WithLogging(zapLog))
+	r.Use(middleware.DecompressRequest)
+	r.Use(middleware.CompressResponse)
 	r.Post("/", h.Shorten)
 	r.Get("/{id}", h.Expand)
 	r.Post("/api/shorten", h.ShortenJSON)
