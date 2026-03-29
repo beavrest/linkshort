@@ -24,7 +24,11 @@ func main() {
 
 	cfg := config.Load()
 
-	store := storage.NewMemory()
+	store, err := storage.NewFileStorage(cfg.FileStoragePath)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	serviceShortener := service.NewShortenerService(store)
 	h := handler.New(serviceShortener, cfg.BaseURL)
 
