@@ -18,15 +18,20 @@ import (
 func main() {
 	zapLog, err := zap.NewDevelopment()
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 	defer zapLog.Sync()
 
 	cfg := config.Load()
 
-	store, err := storage.NewFileStorage(cfg.FileStoragePath)
-	if err != nil {
-		log.Fatal(err)
+	var store service.Store
+	if cfg.FileStoragePath == "" {
+		store = storage.NewMemory()
+	} else {
+		store, err = storage.NewFileStorage(cfg.FileStoragePath)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 
 	serviceShortener := service.NewShortenerService(store)
