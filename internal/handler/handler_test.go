@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/beavrest/linkshort/internal/model"
 	"github.com/beavrest/linkshort/internal/service"
 	"github.com/beavrest/linkshort/internal/storage"
 	"github.com/go-chi/chi/v5"
@@ -138,11 +140,14 @@ func TestHandle_MethodNotAllowed(t *testing.T) {
 		{"DELETE", "/"},
 		{"PATCH", "/xyz"},
 		{"POST", "/abc123"},
+		{"GET", "/api/shorten"},
+		{"PUT", "/api/shorten"},
 	}
 
 	r := chi.NewRouter()
 	r.Post("/", h.Shorten)
 	r.Get("/{id}", h.Expand)
+	r.Post("/api/shorten", h.ShortenJSON)
 
 	for _, tt := range tests {
 		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
@@ -171,4 +176,87 @@ func TestHandle_ShortenUsesBaseURLWhenEmpty(t *testing.T) {
 	require.Equal(t, http.StatusCreated, rec.Code, "status")
 	body := strings.TrimSpace(rec.Body.String())
 	assert.True(t, strings.HasPrefix(body, "http://localhost:8080/"), "body should start with http://localhost:8080/: %s", body)
+}
+
+func TestHandle_PostShortenJSON(t *testing.T) {
+	store := storage.NewMemory()
+	serviceShortener := service.NewShortenerService(store)
+	h := New(serviceShortener, "http://localhost:8080")
+	tests := []struct {
+		name       string
+		body       string
+		wantStatus int
+		checkBody  func(t *testing.T, body []byte)
+	}{
+		{
+			name:       "valid URL returns 201 and JSON result",
+			body:       `{"url":"https://practicum.yandex.ru/"}`,
+			wantStatus: http.StatusCreated,
+			checkBody: func(t *testing.T, body []byte) {
+				var resp model.ShortenJSONResponse
+				require.NoError(t, json.Unmarshal(body, &resp))
+				assert.True(t, strings.HasPrefix(resp.Result, "http://localhost:8080/"), "result: %s", resp.Result)
+				suffix := strings.TrimPrefix(resp.Result, "http://localhost:8080/")
+				assert.Len(t, suffix, 6, "short ID should be 6 chars")
+			},
+		},
+		{
+			name:       "URL with spaces trimmed",
+			body:       `{"url":"  https://example.com  "}`,
+			wantStatus: http.StatusCreated,
+			checkBody: func(t *testing.T, body []byte) {
+				var resp model.ShortenJSONResponse
+				require.NoError(t, json.Unmarshal(body, &resp))
+				assert.True(t, strings.HasPrefix(resp.Result, "http://localhost:8080/"), "result: %s", resp.Result)
+			},
+		},
+		{
+			name:       "invalid JSON returns 400",
+			body:       `{not json`,
+			wantStatus: http.StatusBadRequest,
+			checkBody:  nil,
+		},
+		{
+			name:       "empty url returns 400",
+			body:       `{"url":""}`,
+			wantStatus: http.StatusBadRequest,
+			checkBody:  nil,
+		},
+		{
+			name:       "only whitespace in url returns 400",
+			body:       `{"url":"   "}`,
+			wantStatus: http.StatusBadRequest,
+			checkBody:  nil,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			h.ShortenJSON(rec, req)
+			assert.Equal(t, tt.wantStatus, rec.Code, "status code")
+			if tt.wantStatus == http.StatusCreated {
+				assert.Equal(t, "application/json", rec.Header().Get("Content-Type"), "Content-Type")
+			}
+			if tt.checkBody != nil && tt.wantStatus == http.StatusCreated {
+				tt.checkBody(t, rec.Body.Bytes())
+			}
+		})
+	}
+}
+
+func TestHandle_ShortenJSONUsesBaseURLWhenEmpty(t *testing.T) {
+	store := storage.NewMemory()
+	serviceShortener := service.NewShortenerService(store)
+	h := New(serviceShortener, "")
+	req := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(`{"url":"https://ya.ru"}`))
+	req.Host = "localhost:8080"
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ShortenJSON(rec, req)
+	require.Equal(t, http.StatusCreated, rec.Code, "status")
+	var resp model.ShortenJSONResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.True(t, strings.HasPrefix(resp.Result, "http://localhost:8080/"), "result: %s", resp.Result)
 }

@@ -1,10 +1,15 @@
 package handler
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"net/url"
 	"strings"
+
+	"github.com/beavrest/linkshort/internal/model"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -59,4 +64,47 @@ func (h *Handler) Expand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, originalURL, http.StatusTemporaryRedirect)
+}
+
+func (h *Handler) ShortenJSON(w http.ResponseWriter, r *http.Request) {
+	var req model.ShortenJSONRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	originalURL := strings.TrimSpace(req.URL)
+	if originalURL == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	shortID, err := h.service.Shorten(originalURL)
+	if err != nil {
+		log.Printf("shorten_json: service shorten error: %v (url=%q)", err, originalURL)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	base := h.baseURL
+	if base == "" {
+		base = fmt.Sprintf("http://%s", r.Host)
+	}
+
+	full, err := url.JoinPath(base, shortID)
+	if err != nil {
+		// это внутренняя ошибка сборки URL
+		log.Printf("shorten_json: join path error: %v (base=%q, id=%q)", err, base, shortID)
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	resp, err := json.MarshalIndent(model.ShortenJSONResponse{Result: full}, "", "   ")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_, _ = w.Write(resp)
 }

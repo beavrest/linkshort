@@ -1,14 +1,23 @@
 package storage
 
-import "sync"
+import (
+	"strconv"
+	"sync"
+)
 
 type Memory struct {
-	data map[string]string
-	mu   sync.RWMutex
+	data     map[string]string
+	uuidByID map[string]string
+	nextID   int64
+	mu       sync.RWMutex
 }
 
 func NewMemory() *Memory {
-	return &Memory{data: make(map[string]string)}
+	return &Memory{
+		data:     make(map[string]string),
+		uuidByID: make(map[string]string),
+		nextID:   1,
+	}
 }
 
 func (m *Memory) Save(shortID, originalURL string) error {
@@ -23,4 +32,25 @@ func (m *Memory) Get(shortID string) (string, bool) {
 	defer m.mu.RUnlock()
 	url, ok := m.data[shortID]
 	return url, ok
+}
+
+func (m *Memory) UUID(shortID string) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if uuid, ok := m.uuidByID[shortID]; ok {
+		return uuid
+	}
+	uuid := strconv.FormatInt(m.nextID, 10)
+	m.uuidByID[shortID] = uuid
+	m.nextID++
+	return uuid
+}
+
+func (m *Memory) SetUUID(shortID, uuid string, numericID int64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.uuidByID[shortID] = uuid
+	if numericID+1 > m.nextID {
+		m.nextID = numericID + 1
+	}
 }
