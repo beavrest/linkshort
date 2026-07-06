@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"sync"
 )
 
 type fileRecord struct {
@@ -18,12 +17,7 @@ type fileRecord struct {
 
 type FileStorage struct {
 	*Memory
-
 	path string
-
-	mu       sync.Mutex
-	uuidByID map[string]string
-	nextID   int64
 }
 
 func NewFileStorage(path string) (*FileStorage, error) {
@@ -32,10 +26,8 @@ func NewFileStorage(path string) (*FileStorage, error) {
 	}
 
 	fs := &FileStorage{
-		Memory:   NewMemory(),
-		path:     path,
-		uuidByID: make(map[string]string),
-		nextID:   1,
+		Memory: NewMemory(),
+		path:   path,
 	}
 
 	if err := fs.load(); err != nil {
@@ -50,21 +42,11 @@ func (fs *FileStorage) Save(shortID, originalURL string) error {
 		return err
 	}
 
-	fs.mu.Lock()
-	uuid, ok := fs.uuidByID[shortID]
-	if !ok {
-		uuid = strconv.FormatInt(fs.nextID, 10)
-		fs.uuidByID[shortID] = uuid
-		fs.nextID++
-	}
-	rec := fileRecord{
-		UUID:        uuid,
+	return fs.appendRecord(fileRecord{
+		UUID:        fs.Memory.UUID(shortID),
 		ShortURL:    shortID,
 		OriginalURL: originalURL,
-	}
-	fs.mu.Unlock()
-
-	return fs.appendRecord(rec)
+	})
 }
 
 func (fs *FileStorage) load() error {
@@ -79,8 +61,6 @@ func (fs *FileStorage) load() error {
 
 	dec := json.NewDecoder(f)
 
-	var maxID int64
-
 	for {
 		var r fileRecord
 		if err := dec.Decode(&r); err != nil {
@@ -94,20 +74,10 @@ func (fs *FileStorage) load() error {
 			return err
 		}
 
-		fs.mu.Lock()
-		fs.uuidByID[r.ShortURL] = r.UUID
-		if id, err := strconv.ParseInt(r.UUID, 10, 64); err == nil && id > maxID {
-			maxID = id
+		if numericID, err := strconv.ParseInt(r.UUID, 10, 64); err == nil {
+			fs.Memory.SetUUID(r.ShortURL, r.UUID, numericID)
 		}
-		fs.mu.Unlock()
 	}
-
-	fs.mu.Lock()
-	fs.nextID = maxID + 1
-	if fs.nextID < 1 {
-		fs.nextID = 1
-	}
-	fs.mu.Unlock()
 
 	return nil
 }
