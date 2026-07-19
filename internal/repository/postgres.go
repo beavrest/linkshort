@@ -37,9 +37,9 @@ func (s *PostgresStore) Save(shortID, originalURL string) (string, error) {
 	return resultID, nil
 }
 
-func (s *PostgresStore) SaveBatch(items map[string]string) error {
+func (s *PostgresStore) SaveBatch(items map[string]string) (map[string]string, error) {
 	if len(items) == 0 {
-		return nil
+		return map[string]string{}, nil
 	}
 
 	placeholders := make([]string, 0, len(items))
@@ -53,11 +53,26 @@ func (s *PostgresStore) SaveBatch(items map[string]string) error {
 
 	q := fmt.Sprintf(
 		`INSERT INTO short_urls (short_url, original_url) VALUES %s
-		 ON CONFLICT (short_url) DO UPDATE SET original_url = EXCLUDED.original_url`,
+		 ON CONFLICT (original_url) DO UPDATE SET original_url = EXCLUDED.original_url
+		 RETURNING short_url, original_url`,
 		strings.Join(placeholders, ","),
 	)
-	_, err := s.db.Exec(q, args...)
-	return err
+
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]string, len(items))
+	for rows.Next() {
+		var shortID, originalURL string
+		if err := rows.Scan(&shortID, &originalURL); err != nil {
+			return nil, err
+		}
+		result[originalURL] = shortID
+	}
+	return result, rows.Err()
 }
 
 func (s *PostgresStore) Get(shortID string) (string, bool) {

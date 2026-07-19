@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/beavrest/linkshort/internal/model"
 	"github.com/beavrest/linkshort/internal/service"
@@ -25,10 +28,25 @@ type Shortener interface {
 type Handler struct {
 	service Shortener
 	baseURL string
+	db      *sql.DB
 }
 
-func New(service Shortener, baseURL string) *Handler {
-	return &Handler{service: service, baseURL: baseURL}
+func New(service Shortener, baseURL string, db *sql.DB) *Handler {
+	return &Handler{service: service, baseURL: baseURL, db: db}
+}
+
+func (h *Handler) Ping(w http.ResponseWriter, r *http.Request) {
+	if h.db == nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), time.Second)
+	defer cancel()
+	if err := h.db.PingContext(ctx); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {

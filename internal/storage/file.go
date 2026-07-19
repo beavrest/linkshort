@@ -55,20 +55,27 @@ func (fs *FileStorage) Save(shortID, originalURL string) (string, error) {
 	return resultID, nil
 }
 
-func (fs *FileStorage) SaveBatch(items map[string]string) error {
-	if err := fs.Memory.SaveBatch(items); err != nil {
-		return err
+func (fs *FileStorage) SaveBatch(items map[string]string) (map[string]string, error) {
+	result, err := fs.Memory.SaveBatch(items)
+	if err != nil {
+		return nil, err
 	}
 
 	recs := make([]fileRecord, 0, len(items))
 	for shortID, originalURL := range items {
+		if result[originalURL] != shortID {
+			continue
+		}
 		recs = append(recs, fileRecord{
 			UUID:        fs.Memory.UUID(shortID),
 			ShortURL:    shortID,
 			OriginalURL: originalURL,
 		})
 	}
-	return fs.appendRecords(recs)
+	if err := fs.appendRecords(recs); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (fs *FileStorage) load() error {

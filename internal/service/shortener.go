@@ -10,7 +10,7 @@ var ErrURLExists = errors.New("original url already exists")
 type Store interface {
 	Save(shortID, originalURL string) (string, error)
 	Get(shortID string) (string, bool)
-	SaveBatch(items map[string]string) error
+	SaveBatch(items map[string]string) (map[string]string, error)
 }
 
 type ShortenerService struct {
@@ -42,8 +42,14 @@ func (s *ShortenerService) ShortenBatch(originalURLs []string) ([]string, error)
 		shortIDs[i] = id
 		items[id] = u
 	}
-	if err := s.store.SaveBatch(items); err != nil {
+	actual, err := s.store.SaveBatch(items)
+	if err != nil {
 		return nil, err
+	}
+	for i, u := range originalURLs {
+		if id, ok := actual[u]; ok {
+			shortIDs[i] = id
+		}
 	}
 	return shortIDs, nil
 }

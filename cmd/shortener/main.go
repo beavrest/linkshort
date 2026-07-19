@@ -1,11 +1,8 @@
 package main
 
 import (
-	"context"
 	"database/sql"
 	"log"
-	"net/http"
-	"time"
 
 	"github.com/beavrest/linkshort/internal/config"
 	"github.com/beavrest/linkshort/internal/config/db"
@@ -59,7 +56,7 @@ func main() {
 	}
 
 	serviceShortener := service.NewShortenerService(store)
-	h := handler.New(serviceShortener, cfg.BaseURL)
+	h := handler.New(serviceShortener, cfg.BaseURL, database)
 
 	r := chi.NewRouter()
 	r.Use(logger.WithLogging(zapLog))
@@ -69,19 +66,7 @@ func main() {
 	r.Get("/{id}", h.Expand)
 	r.Post("/api/shorten", h.ShortenJSON)
 	r.Post("/api/shorten/batch", h.ShortenBatch)
-	r.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
-		if database == nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), time.Second)
-		defer cancel()
-		if err := database.PingContext(ctx); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		w.WriteHeader(http.StatusOK)
-	})
+	r.Get("/ping", h.Ping)
 
 	if err := server.Run(cfg.Addr, r); err != nil {
 		log.Fatal(err)

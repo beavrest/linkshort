@@ -34,13 +34,27 @@ func (m *Memory) Save(shortID, originalURL string) (string, error) {
 	return shortID, nil
 }
 
-func (m *Memory) SaveBatch(items map[string]string) error {
+func (m *Memory) SaveBatch(items map[string]string) (map[string]string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	result := make(map[string]string, len(items))
 	for shortID, originalURL := range items {
+		existingID := ""
+		for id, u := range m.data {
+			if u == originalURL {
+				existingID = id
+				break
+			}
+		}
+		if existingID != "" {
+			result[originalURL] = existingID
+			continue
+		}
 		m.data[shortID] = originalURL
+		result[originalURL] = shortID
 	}
-	return nil
+	return result, nil
 }
 
 func (m *Memory) Get(shortID string) (string, bool) {
