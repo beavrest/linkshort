@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 )
 
 type fileRecord struct {
@@ -17,7 +18,8 @@ type fileRecord struct {
 
 type FileStorage struct {
 	*Memory
-	path string
+	path   string
+	fileMu sync.Mutex
 }
 
 func NewFileStorage(path string) (*FileStorage, error) {
@@ -42,11 +44,25 @@ func (fs *FileStorage) Save(shortID, originalURL string) error {
 		return err
 	}
 
-	return fs.appendRecord(fileRecord{
-		UUID:        fs.Memory.UUID(shortID),
-		ShortURL:    shortID,
-		OriginalURL: originalURL,
+	return fs.appendRecords([]fileRecord{
+		{UUID: fs.Memory.UUID(shortID), ShortURL: shortID, OriginalURL: originalURL},
 	})
+}
+
+func (fs *FileStorage) SaveBatch(items map[string]string) error {
+	if err := fs.Memory.SaveBatch(items); err != nil {
+		return err
+	}
+
+	recs := make([]fileRecord, 0, len(items))
+	for shortID, originalURL := range items {
+		recs = append(recs, fileRecord{
+			UUID:        fs.Memory.UUID(shortID),
+			ShortURL:    shortID,
+			OriginalURL: originalURL,
+		})
+	}
+	return fs.appendRecords(recs)
 }
 
 func (fs *FileStorage) load() error {
@@ -82,7 +98,10 @@ func (fs *FileStorage) load() error {
 	return nil
 }
 
-func (fs *FileStorage) appendRecord(rec fileRecord) error {
+func (fs *FileStorage) appendRecords(recs []fileRecord) error {
+	fs.fileMu.Lock()
+	defer fs.fileMu.Unlock()
+
 	dir := filepath.Dir(fs.path)
 	if dir != "." && dir != "" {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -96,5 +115,11 @@ func (fs *FileStorage) appendRecord(rec fileRecord) error {
 	}
 	defer f.Close()
 
-	return json.NewEncoder(f).Encode(rec)
+	enc := json.NewEncoder(f)
+	for _, rec := range recs {
+		if err := enc.Encode(rec); err != nil {
+			return err
+		}
+	}
+	return nil
 }

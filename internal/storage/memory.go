@@ -27,6 +27,15 @@ func (m *Memory) Save(shortID, originalURL string) error {
 	return nil
 }
 
+func (m *Memory) SaveBatch(items map[string]string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for shortID, originalURL := range items {
+		m.data[shortID] = originalURL
+	}
+	return nil
+}
+
 func (m *Memory) Get(shortID string) (string, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

@@ -5,6 +5,7 @@ import "math/rand/v2"
 type Store interface {
 	Save(shortID, originalURL string) error
 	Get(shortID string) (string, bool)
+	SaveBatch(items map[string]string) error
 }
 
 type ShortenerService struct {
@@ -25,6 +26,20 @@ func (s *ShortenerService) Shorten(originalURL string) (string, error) {
 
 func (s *ShortenerService) Expand(id string) (string, bool) {
 	return s.store.Get(id)
+}
+
+func (s *ShortenerService) ShortenBatch(originalURLs []string) ([]string, error) {
+	shortIDs := make([]string, len(originalURLs))
+	items := make(map[string]string, len(originalURLs))
+	for i, u := range originalURLs {
+		id := Generate()
+		shortIDs[i] = id
+		items[id] = u
+	}
+	if err := s.store.SaveBatch(items); err != nil {
+		return nil, err
+	}
+	return shortIDs, nil
 }
 
 const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
