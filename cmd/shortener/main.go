@@ -68,6 +68,7 @@ func main() {
 	r.Post("/", h.Shorten)
 	r.Get("/{id}", h.Expand)
 	r.Post("/api/shorten", h.ShortenJSON)
+	r.Post("/api/shorten/batch", h.ShortenBatch)
 	r.Get("/ping", func(w http.ResponseWriter, r *http.Request) {
 		if database == nil {
 			w.WriteHeader(http.StatusInternalServerError)

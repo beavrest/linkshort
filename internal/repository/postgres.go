@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/beavrest/linkshort/migrations"
 	"github.com/golang-migrate/migrate/v4"
@@ -25,6 +26,29 @@ func (s *PostgresStore) Save(shortID, originalURL string) error {
 		VALUES ($1, $2)
 		ON CONFLICT (short_url) DO UPDATE SET original_url = EXCLUDED.original_url`
 	_, err := s.db.Exec(q, shortID, originalURL)
+	return err
+}
+
+func (s *PostgresStore) SaveBatch(items map[string]string) error {
+	if len(items) == 0 {
+		return nil
+	}
+
+	placeholders := make([]string, 0, len(items))
+	args := make([]any, 0, len(items)*2)
+	i := 1
+	for shortID, originalURL := range items {
+		placeholders = append(placeholders, fmt.Sprintf("($%d,$%d)", i, i+1))
+		args = append(args, shortID, originalURL)
+		i += 2
+	}
+
+	q := fmt.Sprintf(
+		`INSERT INTO short_urls (short_url, original_url) VALUES %s
+		 ON CONFLICT (short_url) DO UPDATE SET original_url = EXCLUDED.original_url`,
+		strings.Join(placeholders, ","),
+	)
+	_, err := s.db.Exec(q, args...)
 	return err
 }
 

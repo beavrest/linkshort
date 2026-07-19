@@ -17,6 +17,7 @@ import (
 type Shortener interface {
 	Shorten(originalURL string) (string, error)
 	Expand(id string) (string, bool)
+	ShortenBatch(originalURLs []string) ([]string, error)
 }
 
 type Handler struct {
@@ -107,4 +108,62 @@ func (h *Handler) ShortenJSON(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	_, _ = w.Write(resp)
+}
+
+func (h *Handler) ShortenBatch(w http.ResponseWriter, r *http.Request) {
+	var req []model.ShortenBatchRequestItem
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	if len(req) == 0 {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	originalURLs := make([]string, len(req))
+	for i, item := range req {
+		u := strings.TrimSpace(item.OriginalURL)
+		if u == "" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		originalURLs[i] = u
+	}
+
+	shortIDs, err := h.service.ShortenBatch(originalURLs)
+	if err != nil {
+		log.Printf("shorten_batch: service shorten batch error: %v (count=%d)", err, len(originalURLs))
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	base := h.baseURL
+	if base == "" {
+		base = fmt.Sprintf("http://%s", r.Host)
+	}
+
+	resp := make([]model.ShortenBatchResponseItem, len(req))
+	for i, item := range req {
+		full, err := url.JoinPath(base, shortIDs[i])
+		if err != nil {
+			log.Printf("shorten_batch: join path error: %v (base=%q, id=%q)", err, base, shortIDs[i])
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		resp[i] = model.ShortenBatchResponseItem{
+			CorrelationID: item.CorrelationID,
+			ShortURL:      full,
+		}
+	}
+
+	body, err := json.MarshalIndent(resp, "", "   ")
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	_, _ = w.Write(body)
 }
