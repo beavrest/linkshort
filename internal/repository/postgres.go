@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/beavrest/linkshort/internal/service"
 	"github.com/beavrest/linkshort/migrations"
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
@@ -20,13 +21,20 @@ func NewPostgresStore(db *sql.DB) *PostgresStore {
 	return &PostgresStore{db: db}
 }
 
-func (s *PostgresStore) Save(shortID, originalURL string) error {
+func (s *PostgresStore) Save(shortID, originalURL string) (string, error) {
 	const q = `
 		INSERT INTO short_urls (short_url, original_url)
 		VALUES ($1, $2)
-		ON CONFLICT (short_url) DO UPDATE SET original_url = EXCLUDED.original_url`
-	_, err := s.db.Exec(q, shortID, originalURL)
-	return err
+		ON CONFLICT (original_url) DO UPDATE SET original_url = EXCLUDED.original_url
+		RETURNING short_url`
+	var resultID string
+	if err := s.db.QueryRow(q, shortID, originalURL).Scan(&resultID); err != nil {
+		return "", err
+	}
+	if resultID != shortID {
+		return resultID, service.ErrURLExists
+	}
+	return resultID, nil
 }
 
 func (s *PostgresStore) SaveBatch(items map[string]string) error {

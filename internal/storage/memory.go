@@ -3,6 +3,8 @@ package storage
 import (
 	"strconv"
 	"sync"
+
+	"github.com/beavrest/linkshort/internal/service"
 )
 
 type Memory struct {
@@ -20,11 +22,16 @@ func NewMemory() *Memory {
 	}
 }
 
-func (m *Memory) Save(shortID, originalURL string) error {
+func (m *Memory) Save(shortID, originalURL string) (string, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	for existingID, u := range m.data {
+		if u == originalURL {
+			return existingID, service.ErrURLExists
+		}
+	}
 	m.data[shortID] = originalURL
-	return nil
+	return shortID, nil
 }
 
 func (m *Memory) SaveBatch(items map[string]string) error {

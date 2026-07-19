@@ -1,9 +1,14 @@
 package service
 
-import "math/rand/v2"
+import (
+	"errors"
+	"math/rand/v2"
+)
+
+var ErrURLExists = errors.New("original url already exists")
 
 type Store interface {
-	Save(shortID, originalURL string) error
+	Save(shortID, originalURL string) (string, error)
 	Get(shortID string) (string, bool)
 	SaveBatch(items map[string]string) error
 }
@@ -18,10 +23,11 @@ func NewShortenerService(store Store) *ShortenerService {
 
 func (s *ShortenerService) Shorten(originalURL string) (string, error) {
 	id := Generate()
-	if err := s.store.Save(id, originalURL); err != nil {
+	shortID, err := s.store.Save(id, originalURL)
+	if err != nil && !errors.Is(err, ErrURLExists) {
 		return "", err
 	}
-	return id, nil
+	return shortID, err
 }
 
 func (s *ShortenerService) Expand(id string) (string, bool) {

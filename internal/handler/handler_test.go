@@ -264,6 +264,52 @@ func TestHandle_ShortenJSONUsesBaseURLWhenEmpty(t *testing.T) {
 	assert.True(t, strings.HasPrefix(resp.Result, "http://localhost:8080/"), "result: %s", resp.Result)
 }
 
+func TestHandle_PostShortenConflict(t *testing.T) {
+	store := storage.NewMemory()
+	serviceShortener := service.NewShortenerService(store)
+	h := New(serviceShortener, "http://localhost:8080")
+
+	req1 := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("https://practicum.yandex.ru/"))
+	req1.Header.Set("Content-Type", "text/plain")
+	rec1 := httptest.NewRecorder()
+	h.Shorten(rec1, req1)
+	require.Equal(t, http.StatusCreated, rec1.Code, "first status")
+	firstBody := strings.TrimSpace(rec1.Body.String())
+
+	req2 := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("https://practicum.yandex.ru/"))
+	req2.Header.Set("Content-Type", "text/plain")
+	rec2 := httptest.NewRecorder()
+	h.Shorten(rec2, req2)
+	assert.Equal(t, http.StatusConflict, rec2.Code, "second status")
+	secondBody := strings.TrimSpace(rec2.Body.String())
+	assert.Equal(t, firstBody, secondBody, "conflict response should return the existing short URL")
+}
+
+func TestHandle_PostShortenJSONConflict(t *testing.T) {
+	store := storage.NewMemory()
+	serviceShortener := service.NewShortenerService(store)
+	h := New(serviceShortener, "http://localhost:8080")
+
+	body := `{"url":"https://practicum.yandex.ru/"}`
+
+	req1 := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(body))
+	req1.Header.Set("Content-Type", "application/json")
+	rec1 := httptest.NewRecorder()
+	h.ShortenJSON(rec1, req1)
+	require.Equal(t, http.StatusCreated, rec1.Code, "first status")
+	var firstResp model.ShortenJSONResponse
+	require.NoError(t, json.Unmarshal(rec1.Body.Bytes(), &firstResp))
+
+	req2 := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(body))
+	req2.Header.Set("Content-Type", "application/json")
+	rec2 := httptest.NewRecorder()
+	h.ShortenJSON(rec2, req2)
+	assert.Equal(t, http.StatusConflict, rec2.Code, "second status")
+	var secondResp model.ShortenJSONResponse
+	require.NoError(t, json.Unmarshal(rec2.Body.Bytes(), &secondResp))
+	assert.Equal(t, firstResp.Result, secondResp.Result, "conflict response should return the existing short URL")
+}
+
 func TestHandle_PostShortenBatch(t *testing.T) {
 	store := storage.NewMemory()
 	serviceShortener := service.NewShortenerService(store)

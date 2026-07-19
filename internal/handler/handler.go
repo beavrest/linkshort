@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -10,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/beavrest/linkshort/internal/model"
+	"github.com/beavrest/linkshort/internal/service"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -42,7 +44,10 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 	}
 
 	shortID, err := h.service.Shorten(originalURL)
-	if err != nil {
+	status := http.StatusCreated
+	if errors.Is(err, service.ErrURLExists) {
+		status = http.StatusConflict
+	} else if err != nil {
 		http.Error(w, "", http.StatusInternalServerError)
 		return
 	}
@@ -53,7 +58,7 @@ func (h *Handler) Shorten(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/plain")
-	w.WriteHeader(http.StatusCreated)
+	w.WriteHeader(status)
 	fmt.Fprintf(w, "%s/%s", base, shortID)
 }
 
@@ -80,7 +85,10 @@ func (h *Handler) ShortenJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	shortID, err := h.service.Shorten(originalURL)
-	if err != nil {
+	status := http.StatusCreated
+	if errors.Is(err, service.ErrURLExists) {
+		status = http.StatusConflict
+	} else if err != nil {
 		log.Printf("shorten_json: service shorten error: %v (url=%q)", err, originalURL)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -106,7 +114,7 @@ func (h *Handler) ShortenJSON(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
+	w.WriteHeader(status)
 	_, _ = w.Write(resp)
 }
 

@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+
+	"github.com/beavrest/linkshort/internal/service"
 )
 
 type fileRecord struct {
@@ -39,14 +41,18 @@ func NewFileStorage(path string) (*FileStorage, error) {
 	return fs, nil
 }
 
-func (fs *FileStorage) Save(shortID, originalURL string) error {
-	if err := fs.Memory.Save(shortID, originalURL); err != nil {
-		return err
+func (fs *FileStorage) Save(shortID, originalURL string) (string, error) {
+	resultID, err := fs.Memory.Save(shortID, originalURL)
+	if err != nil {
+		return resultID, err
 	}
 
-	return fs.appendRecords([]fileRecord{
-		{UUID: fs.Memory.UUID(shortID), ShortURL: shortID, OriginalURL: originalURL},
-	})
+	if err := fs.appendRecords([]fileRecord{
+		{UUID: fs.Memory.UUID(resultID), ShortURL: resultID, OriginalURL: originalURL},
+	}); err != nil {
+		return "", err
+	}
+	return resultID, nil
 }
 
 func (fs *FileStorage) SaveBatch(items map[string]string) error {
@@ -86,7 +92,7 @@ func (fs *FileStorage) load() error {
 			return err
 		}
 
-		if err := fs.Memory.Save(r.ShortURL, r.OriginalURL); err != nil {
+		if _, err := fs.Memory.Save(r.ShortURL, r.OriginalURL); err != nil && !errors.Is(err, service.ErrURLExists) {
 			return err
 		}
 
