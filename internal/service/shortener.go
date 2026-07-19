@@ -1,10 +1,16 @@
 package service
 
-import "math/rand/v2"
+import (
+	"errors"
+	"math/rand/v2"
+)
+
+var ErrURLExists = errors.New("original url already exists")
 
 type Store interface {
-	Save(shortID, originalURL string) error
+	Save(shortID, originalURL string) (string, error)
 	Get(shortID string) (string, bool)
+	SaveBatch(items map[string]string) (map[string]string, error)
 }
 
 type ShortenerService struct {
@@ -17,14 +23,35 @@ func NewShortenerService(store Store) *ShortenerService {
 
 func (s *ShortenerService) Shorten(originalURL string) (string, error) {
 	id := Generate()
-	if err := s.store.Save(id, originalURL); err != nil {
+	shortID, err := s.store.Save(id, originalURL)
+	if err != nil && !errors.Is(err, ErrURLExists) {
 		return "", err
 	}
-	return id, nil
+	return shortID, err
 }
 
 func (s *ShortenerService) Expand(id string) (string, bool) {
 	return s.store.Get(id)
+}
+
+func (s *ShortenerService) ShortenBatch(originalURLs []string) ([]string, error) {
+	shortIDs := make([]string, len(originalURLs))
+	items := make(map[string]string, len(originalURLs))
+	for i, u := range originalURLs {
+		id := Generate()
+		shortIDs[i] = id
+		items[id] = u
+	}
+	actual, err := s.store.SaveBatch(items)
+	if err != nil {
+		return nil, err
+	}
+	for i, u := range originalURLs {
+		if id, ok := actual[u]; ok {
+			shortIDs[i] = id
+		}
+	}
+	return shortIDs, nil
 }
 
 const chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"

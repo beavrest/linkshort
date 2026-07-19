@@ -7,6 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
+
+	"github.com/beavrest/linkshort/internal/service"
 )
 
 type fileRecord struct {
@@ -17,7 +20,8 @@ type fileRecord struct {
 
 type FileStorage struct {
 	*Memory
-	path string
+	path   string
+	fileMu sync.Mutex
 }
 
 func NewFileStorage(path string) (*FileStorage, error) {
@@ -37,16 +41,41 @@ func NewFileStorage(path string) (*FileStorage, error) {
 	return fs, nil
 }
 
-func (fs *FileStorage) Save(shortID, originalURL string) error {
-	if err := fs.Memory.Save(shortID, originalURL); err != nil {
-		return err
+func (fs *FileStorage) Save(shortID, originalURL string) (string, error) {
+	resultID, err := fs.Memory.Save(shortID, originalURL)
+	if err != nil {
+		return resultID, err
 	}
 
-	return fs.appendRecord(fileRecord{
-		UUID:        fs.Memory.UUID(shortID),
-		ShortURL:    shortID,
-		OriginalURL: originalURL,
-	})
+	if err := fs.appendRecords([]fileRecord{
+		{UUID: fs.Memory.UUID(resultID), ShortURL: resultID, OriginalURL: originalURL},
+	}); err != nil {
+		return "", err
+	}
+	return resultID, nil
+}
+
+func (fs *FileStorage) SaveBatch(items map[string]string) (map[string]string, error) {
+	result, err := fs.Memory.SaveBatch(items)
+	if err != nil {
+		return nil, err
+	}
+
+	recs := make([]fileRecord, 0, len(items))
+	for shortID, originalURL := range items {
+		if result[originalURL] != shortID {
+			continue
+		}
+		recs = append(recs, fileRecord{
+			UUID:        fs.Memory.UUID(shortID),
+			ShortURL:    shortID,
+			OriginalURL: originalURL,
+		})
+	}
+	if err := fs.appendRecords(recs); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
 
 func (fs *FileStorage) load() error {
@@ -70,7 +99,7 @@ func (fs *FileStorage) load() error {
 			return err
 		}
 
-		if err := fs.Memory.Save(r.ShortURL, r.OriginalURL); err != nil {
+		if _, err := fs.Memory.Save(r.ShortURL, r.OriginalURL); err != nil && !errors.Is(err, service.ErrURLExists) {
 			return err
 		}
 
@@ -82,7 +111,10 @@ func (fs *FileStorage) load() error {
 	return nil
 }
 
-func (fs *FileStorage) appendRecord(rec fileRecord) error {
+func (fs *FileStorage) appendRecords(recs []fileRecord) error {
+	fs.fileMu.Lock()
+	defer fs.fileMu.Unlock()
+
 	dir := filepath.Dir(fs.path)
 	if dir != "." && dir != "" {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
@@ -96,5 +128,11 @@ func (fs *FileStorage) appendRecord(rec fileRecord) error {
 	}
 	defer f.Close()
 
-	return json.NewEncoder(f).Encode(rec)
+	enc := json.NewEncoder(f)
+	for _, rec := range recs {
+		if err := enc.Encode(rec); err != nil {
+			return err
+		}
+	}
+	return nil
 }

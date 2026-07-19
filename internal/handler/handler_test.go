@@ -18,7 +18,7 @@ import (
 func TestHandle_PostShorten(t *testing.T) {
 	store := storage.NewMemory()
 	serviceShortener := service.NewShortenerService(store)
-	h := New(serviceShortener, "http://localhost:8080")
+	h := New(serviceShortener, "http://localhost:8080", nil)
 
 	tests := []struct {
 		name       string
@@ -81,7 +81,7 @@ func TestHandle_GetExpand(t *testing.T) {
 	store := storage.NewMemory()
 	store.Save("abc123", "https://practicum.yandex.ru/")
 	serviceShortener := service.NewShortenerService(store)
-	h := New(serviceShortener, "http://localhost:8080")
+	h := New(serviceShortener, "http://localhost:8080", nil)
 
 	tests := []struct {
 		name       string
@@ -130,7 +130,7 @@ func TestHandle_GetExpand(t *testing.T) {
 func TestHandle_MethodNotAllowed(t *testing.T) {
 	store := storage.NewMemory()
 	serviceShortener := service.NewShortenerService(store)
-	h := New(serviceShortener, "")
+	h := New(serviceShortener, "", nil)
 
 	tests := []struct {
 		method string
@@ -142,12 +142,15 @@ func TestHandle_MethodNotAllowed(t *testing.T) {
 		{"POST", "/abc123"},
 		{"GET", "/api/shorten"},
 		{"PUT", "/api/shorten"},
+		{"GET", "/api/shorten/batch"},
+		{"PUT", "/api/shorten/batch"},
 	}
 
 	r := chi.NewRouter()
 	r.Post("/", h.Shorten)
 	r.Get("/{id}", h.Expand)
 	r.Post("/api/shorten", h.ShortenJSON)
+	r.Post("/api/shorten/batch", h.ShortenBatch)
 
 	for _, tt := range tests {
 		t.Run(tt.method+" "+tt.path, func(t *testing.T) {
@@ -164,7 +167,7 @@ func TestHandle_MethodNotAllowed(t *testing.T) {
 func TestHandle_ShortenUsesBaseURLWhenEmpty(t *testing.T) {
 	store := storage.NewMemory()
 	serviceShortener := service.NewShortenerService(store)
-	h := New(serviceShortener, "")
+	h := New(serviceShortener, "", nil)
 
 	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("https://ya.ru"))
 	req.Host = "localhost:8080"
@@ -181,7 +184,7 @@ func TestHandle_ShortenUsesBaseURLWhenEmpty(t *testing.T) {
 func TestHandle_PostShortenJSON(t *testing.T) {
 	store := storage.NewMemory()
 	serviceShortener := service.NewShortenerService(store)
-	h := New(serviceShortener, "http://localhost:8080")
+	h := New(serviceShortener, "http://localhost:8080", nil)
 	tests := []struct {
 		name       string
 		body       string
@@ -249,7 +252,7 @@ func TestHandle_PostShortenJSON(t *testing.T) {
 func TestHandle_ShortenJSONUsesBaseURLWhenEmpty(t *testing.T) {
 	store := storage.NewMemory()
 	serviceShortener := service.NewShortenerService(store)
-	h := New(serviceShortener, "")
+	h := New(serviceShortener, "", nil)
 	req := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(`{"url":"https://ya.ru"}`))
 	req.Host = "localhost:8080"
 	req.Header.Set("Content-Type", "application/json")
@@ -259,4 +262,145 @@ func TestHandle_ShortenJSONUsesBaseURLWhenEmpty(t *testing.T) {
 	var resp model.ShortenJSONResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	assert.True(t, strings.HasPrefix(resp.Result, "http://localhost:8080/"), "result: %s", resp.Result)
+}
+
+func TestHandle_PostShortenConflict(t *testing.T) {
+	store := storage.NewMemory()
+	serviceShortener := service.NewShortenerService(store)
+	h := New(serviceShortener, "http://localhost:8080", nil)
+
+	req1 := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("https://practicum.yandex.ru/"))
+	req1.Header.Set("Content-Type", "text/plain")
+	rec1 := httptest.NewRecorder()
+	h.Shorten(rec1, req1)
+	require.Equal(t, http.StatusCreated, rec1.Code, "first status")
+	firstBody := strings.TrimSpace(rec1.Body.String())
+
+	req2 := httptest.NewRequest(http.MethodPost, "/", strings.NewReader("https://practicum.yandex.ru/"))
+	req2.Header.Set("Content-Type", "text/plain")
+	rec2 := httptest.NewRecorder()
+	h.Shorten(rec2, req2)
+	assert.Equal(t, http.StatusConflict, rec2.Code, "second status")
+	secondBody := strings.TrimSpace(rec2.Body.String())
+	assert.Equal(t, firstBody, secondBody, "conflict response should return the existing short URL")
+}
+
+func TestHandle_PostShortenJSONConflict(t *testing.T) {
+	store := storage.NewMemory()
+	serviceShortener := service.NewShortenerService(store)
+	h := New(serviceShortener, "http://localhost:8080", nil)
+
+	body := `{"url":"https://practicum.yandex.ru/"}`
+
+	req1 := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(body))
+	req1.Header.Set("Content-Type", "application/json")
+	rec1 := httptest.NewRecorder()
+	h.ShortenJSON(rec1, req1)
+	require.Equal(t, http.StatusCreated, rec1.Code, "first status")
+	var firstResp model.ShortenJSONResponse
+	require.NoError(t, json.Unmarshal(rec1.Body.Bytes(), &firstResp))
+
+	req2 := httptest.NewRequest(http.MethodPost, "/api/shorten", strings.NewReader(body))
+	req2.Header.Set("Content-Type", "application/json")
+	rec2 := httptest.NewRecorder()
+	h.ShortenJSON(rec2, req2)
+	assert.Equal(t, http.StatusConflict, rec2.Code, "second status")
+	var secondResp model.ShortenJSONResponse
+	require.NoError(t, json.Unmarshal(rec2.Body.Bytes(), &secondResp))
+	assert.Equal(t, firstResp.Result, secondResp.Result, "conflict response should return the existing short URL")
+}
+
+func TestHandle_PostShortenBatch(t *testing.T) {
+	store := storage.NewMemory()
+	serviceShortener := service.NewShortenerService(store)
+	h := New(serviceShortener, "http://localhost:8080", nil)
+
+	tests := []struct {
+		name       string
+		body       string
+		wantStatus int
+		checkBody  func(t *testing.T, body []byte)
+	}{
+		{
+			name:       "valid batch returns 201 with correlation IDs in order",
+			body:       `[{"correlation_id":"1","original_url":"https://a.example"},{"correlation_id":"2","original_url":"https://b.example"}]`,
+			wantStatus: http.StatusCreated,
+			checkBody: func(t *testing.T, body []byte) {
+				var resp []model.ShortenBatchResponseItem
+				require.NoError(t, json.Unmarshal(body, &resp))
+				require.Len(t, resp, 2)
+				assert.Equal(t, "1", resp[0].CorrelationID)
+				assert.Equal(t, "2", resp[1].CorrelationID)
+				assert.True(t, strings.HasPrefix(resp[0].ShortURL, "http://localhost:8080/"), "short_url: %s", resp[0].ShortURL)
+				assert.True(t, strings.HasPrefix(resp[1].ShortURL, "http://localhost:8080/"), "short_url: %s", resp[1].ShortURL)
+			},
+		},
+		{
+			name:       "empty array returns 400",
+			body:       `[]`,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "invalid JSON returns 400",
+			body:       `[{not json`,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "item with empty original_url returns 400",
+			body:       `[{"correlation_id":"1","original_url":""}]`,
+			wantStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+
+			h.ShortenBatch(rec, req)
+
+			assert.Equal(t, tt.wantStatus, rec.Code, "status code")
+			if tt.wantStatus == http.StatusCreated {
+				assert.Equal(t, "application/json", rec.Header().Get("Content-Type"), "Content-Type")
+			}
+			if tt.checkBody != nil && tt.wantStatus == http.StatusCreated {
+				tt.checkBody(t, rec.Body.Bytes())
+			}
+		})
+	}
+}
+
+func TestHandle_PostShortenBatchConflict(t *testing.T) {
+	store := storage.NewMemory()
+	existingID, err := store.Save("abc123", "https://a.example")
+	require.NoError(t, err)
+
+	serviceShortener := service.NewShortenerService(store)
+	h := New(serviceShortener, "http://localhost:8080", nil)
+
+	body := `[{"correlation_id":"1","original_url":"https://a.example"},{"correlation_id":"2","original_url":"https://b.example"}]`
+	req := httptest.NewRequest(http.MethodPost, "/api/shorten/batch", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	h.ShortenBatch(rec, req)
+
+	require.Equal(t, http.StatusCreated, rec.Code, "status code")
+	var resp []model.ShortenBatchResponseItem
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	require.Len(t, resp, 2)
+	assert.Equal(t, "http://localhost:8080/"+existingID, resp[0].ShortURL, "existing URL should reuse its stored short ID")
+	assert.NotEqual(t, resp[0].ShortURL, resp[1].ShortURL)
+}
+
+func TestHandle_Ping(t *testing.T) {
+	h := New(nil, "", nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/ping", nil)
+	rec := httptest.NewRecorder()
+
+	h.Ping(rec, req)
+
+	assert.Equal(t, http.StatusInternalServerError, rec.Code, "status code without a DB connection")
 }
